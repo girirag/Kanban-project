@@ -1,34 +1,19 @@
 <script lang="ts">
   import { dndzone } from 'svelte-dnd-action';
   import { onMount } from "svelte";
-  import { db } from '../lib/firebase';
-  import {
-    collection,
-    doc,
-    setDoc,
-    deleteDoc,
-    onSnapshot,
-    getDocs
-  } from "firebase/firestore";
-
-  type Task = {
-    id: number;
-    text: string;
-    column: string;
-  };
+  import { apiService, type Task } from '../lib/api';
 
   const columns = ["Planning", "To Do", "In Progress", "In Review", "Done"];
   let newTask = '';
   let taskId = 1;
   let errorMessage = '';
-  const TASKS_COLLECTION = "kanbanTasks";
 
   let board: Record<string, Task[]> = {};
   columns.forEach(col => board[col] = []);
 
   let originalBoardState: Record<string, Task[]> = {};
   let isDragging = false;
-  let firebaseConnected = false;
+  let apiConnected = false;
 
   function getAllTaskNames(): string[] {
     return Object.values(board).flat().map(task => task.text.toLowerCase().trim());
@@ -67,34 +52,32 @@
   onMount(async () => {
     loadFromLocalStorage();
     try {
-      const tasksSnapshot = await getDocs(collection(db, TASKS_COLLECTION));
-      firebaseConnected = true;
-      columns.forEach(col => board[col] = []);
-      tasksSnapshot.forEach((docSnap) => {
-        const task = docSnap.data() as Task;
-        if (board[task.column]) {
-          board[task.column].push(task);
-        }
-      });
-      const allTasks = Object.values(board).flat();
-      if (allTasks.length > 0) {
-        taskId = Math.max(...allTasks.map(t => t.id)) + 1;
-      }
-      board = { ...board };
-      onSnapshot(collection(db, TASKS_COLLECTION), (snapshot) => {
-        const newBoard: Record<string, Task[]> = {};
-        columns.forEach(col => newBoard[col] = []);
-        snapshot.forEach((docSnap) => {
-          const task = docSnap.data() as Task;
-          newBoard[task.column].push(task);
+      const healthCheck = await apiService.healthCheck();
+      console.log('API Health Check:', healthCheck);
+      apiConnected = healthCheck.status === 'healthy';
+      
+      if (apiConnected) {
+        const tasks = await apiService.getTasks();
+        console.log('Tasks loaded from API:', tasks);
+        
+        columns.forEach(col => board[col] = []);
+        tasks.forEach(task => {
+          if (board[task.column]) {
+            board[task.column].push(task);
+          }
         });
-        board = newBoard;
+        
+        if (tasks.length > 0) {
+          taskId = Math.max(...tasks.map(t => t.id)) + 1;
+        }
+        
+        board = { ...board };
         saveToLocalStorage();
-      });
+      }
     } catch (error) {
-      console.error('Firebase connection failed:', error);
-      firebaseConnected = false;
-      errorMessage = 'Firebase connection failed - using offline mode';
+      console.error('API connection failed:', error);
+      apiConnected = false;
+      errorMessage = 'API connection failed - using offline mode';
       setTimeout(() => errorMessage = '', 5000);
     }
   });
@@ -112,23 +95,38 @@
       setTimeout(() => errorMessage = '', 3000);
       return;
     }
-    const newItem: Task = {
-      id: taskId++,
-      text: trimmedTask,
-      column: "Planning"
-    };
-    if (firebaseConnected) {
+    
+    if (apiConnected) {
       try {
-        await setDoc(doc(db, TASKS_COLLECTION, String(newItem.id)), newItem);
+        const newTaskData = await apiService.createTask({
+          text: trimmedTask,
+          column: "Planning"
+        });
+        
+        board["Planning"] = [...board["Planning"], newTaskData];
+        board = { ...board };
+        saveToLocalStorage();
+        
+        console.log('Task created via API:', newTaskData);
       } catch (error) {
-        console.error('Firebase save failed:', error);
+        console.error('API create failed:', error);
+        const newItem: Task = {
+          id: taskId++,
+          text: trimmedTask,
+          column: "Planning"
+        };
         board["Planning"] = [...board["Planning"], newItem];
         board = { ...board };
         saveToLocalStorage();
-        errorMessage = 'Firebase save failed - saved locally';
+        errorMessage = 'API save failed - saved locally';
         setTimeout(() => errorMessage = '', 3000);
       }
     } else {
+      const newItem: Task = {
+        id: taskId++,
+        text: trimmedTask,
+        column: "Planning"
+      };
       board["Planning"] = [...board["Planning"], newItem];
       board = { ...board };
       saveToLocalStorage();
@@ -163,15 +161,18 @@
     const canMoveForwardOneStep = toIndex === fromIndex + 1;
     const canMoveBackwardOneStep = toIndex === fromIndex - 1;
     const canMoveFromDone = originalColumn === "Done";
+    
     if (canMoveForwardOneStep || canMoveBackwardOneStep || canMoveFromDone) {
       movedTask.column = column;
       board[column] = items;
       board[originalColumn] = board[originalColumn].filter(task => task.id !== movedTask.id);
-      if (firebaseConnected) {
+      
+      if (apiConnected) {
         try {
-          await setDoc(doc(db, TASKS_COLLECTION, String(movedTask.id)), movedTask);
+          await apiService.updateTask(movedTask.id, { column: column });
+          console.log('Task updated via API:', movedTask.id);
         } catch (error) {
-          console.error('Firebase update failed:', error);
+          console.error('API update failed:', error);
         }
       }
       saveToLocalStorage();
@@ -192,13 +193,16 @@
 
   async function deleteTask(taskId: number, column: string, event?: Event) {
     event?.stopPropagation();
-    if (firebaseConnected) {
+    
+    if (apiConnected) {
       try {
-        await deleteDoc(doc(db, TASKS_COLLECTION, String(taskId)));
+        await apiService.deleteTask(taskId);
+        console.log('Task deleted via API:', taskId);
       } catch (error) {
-        console.error('Firebase delete failed:', error);
+        console.error('API delete failed:', error);
       }
     }
+    
     board[column] = board[column].filter(task => task.id !== taskId);
     board = { ...board };
     saveToLocalStorage();
