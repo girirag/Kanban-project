@@ -1,3 +1,3 @@
 @echo off
 echo Starting FastAPI Kanban Backend...
-python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+"C:\Users\Giriraghav Kishore\AppData\Local\Programs\Python\Python311\python.exe" -m uvicorn main:app --reload --host 0.0.0.0 --port 8001

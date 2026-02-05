@@ -18,6 +18,11 @@ Thumbs.db
 !.env.example
 !.env.test
 
+# Firebase
+backend/firebase-service-account.json
+backend/tasks_backup.json
+backend/__pycache__/
+
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*

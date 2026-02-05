@@ -61,8 +61,12 @@ def save_tasks():
     except Exception as e:
         print(f"Error saving tasks: {e}")
 
-# Load tasks on startup
-load_tasks()
+@app.on_event("startup")
+async def startup_event():
+    """Initialize Firebase and sync data on startup"""
+    load_tasks()
+    if firebase_connected:
+        await sync_with_firebase()
 
 @app.get("/")
 async def root():
@@ -91,6 +95,11 @@ async def create_task(task: TaskCreate):
         
         tasks_db.append(new_task)
         next_id += 1
+        
+        # Save to Firebase if connected
+        if firebase_connected:
+            await save_task_to_firebase(new_task)
+        
         save_tasks()
         
         print(f"Created task: {new_task}")
@@ -112,10 +121,17 @@ async def update_task(task_id: int, task_update: TaskUpdate):
             raise HTTPException(status_code=404, detail="Task not found")
         
         # Update the task
+        update_data = {}
         if task_update.text is not None:
             tasks_db[task_index]['text'] = task_update.text
+            update_data['text'] = task_update.text
         if task_update.column is not None:
             tasks_db[task_index]['column'] = task_update.column
+            update_data['column'] = task_update.column
+        
+        # Update in Firebase if connected
+        if firebase_connected and update_data:
+            await update_task_in_firebase(task_id, update_data)
         
         save_tasks()
         
@@ -140,6 +156,11 @@ async def delete_task(task_id: int):
             raise HTTPException(status_code=404, detail="Task not found")
         
         deleted_task = tasks_db.pop(task_index)
+        
+        # Delete from Firebase if connected
+        if firebase_connected:
+            await delete_task_from_firebase(task_id)
+        
         save_tasks()
         
         print(f"Deleted task {task_id}: {deleted_task}")
@@ -154,32 +175,123 @@ async def health_check():
     return {
         "status": "healthy",
         "tasks_count": len(tasks_db),
-        "firebase_connected": False,  # Will be True when Firebase is connected
-        "storage": "file_backup"
+        "firebase_connected": firebase_connected,
+        "storage": "firebase" if firebase_connected else "file_backup"
     }
 
-# Firebase integration (will be activated when service account is available)
+# Firebase integration
 firebase_db = None
+firebase_connected = False
 
 def init_firebase():
-    global firebase_db
+    global firebase_db, firebase_connected
     try:
-        if os.path.exists("firebase-service-account.json"):
-            import firebase_admin
-            from firebase_admin import credentials, firestore
+        if not os.path.exists("firebase-service-account.json"):
+            print("❌ Firebase service account file not found")
+            return False
             
+        # Check if the file contains placeholder values
+        with open("firebase-service-account.json", 'r') as f:
+            service_account = json.load(f)
+            
+        if (service_account.get("private_key", "").strip() == "-----BEGIN PRIVATE KEY-----\nyour-private-key\n-----END PRIVATE KEY-----" or
+            "your-private-key" in service_account.get("private_key", "") or
+            "xxxxx" in service_account.get("client_email", "")):
+            print("❌ Firebase service account contains placeholder values")
+            print("📝 Please replace firebase-service-account.json with real credentials from Firebase Console")
+            return False
+            
+        import firebase_admin
+        from firebase_admin import credentials, firestore
+        
+        # Check if app is already initialized
+        try:
+            firebase_admin.get_app()
+        except ValueError:
             cred = credentials.Certificate("firebase-service-account.json")
             firebase_admin.initialize_app(cred)
-            firebase_db = firestore.client()
-            
-            print("✅ Firebase initialized successfully")
-            return True
+        
+        firebase_db = firestore.client()
+        firebase_connected = True
+        
+        print("✅ Firebase initialized successfully")
+        return True
     except Exception as e:
-        print(f"Firebase initialization failed: {e}")
+        print(f"❌ Firebase initialization failed: {e}")
+        if "InvalidData" in str(e):
+            print("📝 The private key in firebase-service-account.json is invalid")
+            print("📝 Please download a new service account key from Firebase Console")
+        firebase_connected = False
     return False
 
+async def sync_with_firebase():
+    """Sync local tasks with Firebase"""
+    global tasks_db
+    if not firebase_connected or not firebase_db:
+        return
+    
+    try:
+        # Get tasks from Firebase
+        tasks_ref = firebase_db.collection('kanban-tasks')
+        docs = tasks_ref.stream()
+        
+        firebase_tasks = []
+        for doc in docs:
+            task_data = doc.to_dict()
+            task_data['id'] = int(doc.id)
+            firebase_tasks.append(task_data)
+        
+        if firebase_tasks:
+            tasks_db = firebase_tasks
+            print(f"Synced {len(firebase_tasks)} tasks from Firebase")
+        
+    except Exception as e:
+        print(f"Firebase sync failed: {e}")
+
+async def save_task_to_firebase(task_data):
+    """Save task to Firebase"""
+    if not firebase_connected or not firebase_db:
+        return False
+    
+    try:
+        doc_ref = firebase_db.collection('kanban-tasks').document(str(task_data['id']))
+        doc_ref.set(task_data)
+        print(f"Saved task {task_data['id']} to Firebase")
+        return True
+    except Exception as e:
+        print(f"Failed to save task to Firebase: {e}")
+        return False
+
+async def update_task_in_firebase(task_id, task_data):
+    """Update task in Firebase"""
+    if not firebase_connected or not firebase_db:
+        return False
+    
+    try:
+        doc_ref = firebase_db.collection('kanban-tasks').document(str(task_id))
+        doc_ref.update(task_data)
+        print(f"Updated task {task_id} in Firebase")
+        return True
+    except Exception as e:
+        print(f"Failed to update task in Firebase: {e}")
+        return False
+
+async def delete_task_from_firebase(task_id):
+    """Delete task from Firebase"""
+    if not firebase_connected or not firebase_db:
+        return False
+    
+    try:
+        doc_ref = firebase_db.collection('kanban-tasks').document(str(task_id))
+        doc_ref.delete()
+        print(f"Deleted task {task_id} from Firebase")
+        return True
+    except Exception as e:
+        print(f"Failed to delete task from Firebase: {e}")
+        return False
+
 # Try to initialize Firebase on startup
-firebase_connected = init_firebase()
+init_firebase()
 
 if __name__ == "__main__":
     import uvicorn
