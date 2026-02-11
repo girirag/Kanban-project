@@ -51,12 +51,18 @@
 
   onMount(async () => {
     loadFromLocalStorage();
+    await connectToAPI();
+  });
+
+  async function connectToAPI() {
     try {
+      console.log('Attempting to connect to API...');
       const healthCheck = await apiService.healthCheck();
       console.log('API Health Check:', healthCheck);
       apiConnected = healthCheck.status === 'healthy';
       
       if (apiConnected) {
+        errorMessage = '';
         const tasks = await apiService.getTasks();
         console.log('Tasks loaded from API:', tasks);
         
@@ -77,10 +83,9 @@
     } catch (error) {
       console.error('API connection failed:', error);
       apiConnected = false;
-      errorMessage = 'API connection failed - using offline mode';
-      setTimeout(() => errorMessage = '', 5000);
+      errorMessage = 'API connection failed - using offline mode. Click "Retry Connection" to try again.';
     }
-  });
+  }
 
   async function addTask() {
     const trimmedTask = newTask.trim();
@@ -458,6 +463,59 @@
     background: #fef2f2;
     border-radius: 6px;
     border-left: 4px solid #ef4444;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  
+  .retry-btn {
+    padding: 0.5rem 1rem;
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  
+  .retry-btn:hover {
+    background: #2563eb;
+  }
+  
+  .connection-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    margin-left: auto;
+  }
+  
+  .connection-status.connected {
+    background: #d1fae5;
+    color: #065f46;
+  }
+  
+  .connection-status.disconnected {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+  
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  
+  .status-dot.connected {
+    background: #10b981;
+  }
+  
+  .status-dot.disconnected {
+    background: #ef4444;
   }
 </style>
 
@@ -467,6 +525,10 @@
       <div class="board-title">
         <div class="board-icon">📋</div>
         <h1 class="board-name">Project Board</h1>
+      </div>
+      <div class="connection-status {apiConnected ? 'connected' : 'disconnected'}">
+        <div class="status-dot {apiConnected ? 'connected' : 'disconnected'}"></div>
+        {apiConnected ? 'Connected to Firebase' : 'Offline Mode'}
       </div>
     </div>
 
@@ -486,7 +548,12 @@
     </div>
 
     {#if errorMessage}
-      <div class="error-message">{errorMessage}</div>
+      <div class="error-message">
+        {errorMessage}
+        {#if !apiConnected}
+          <button class="retry-btn" on:click={connectToAPI}>Retry Connection</button>
+        {/if}
+      </div>
     {/if}
 
     <div class="kanban">
