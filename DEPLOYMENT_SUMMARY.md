@@ -3,7 +3,7 @@
 ## 🎉 Your Kanban Board is Live!
 
 ### Frontend (Vercel)
-- **URL**: https://kanban-project-khaki.vercel.app
+- **URL**: https://frontend-kanban-board-one.vercel.app
 - **Status**: ✅ Deployed
 - **Framework**: SvelteKit
 - **API Connection**: Configured to use Render backend
@@ -28,7 +28,7 @@
 
 | Service | URL |
 |---------|-----|
-| **Frontend (Vercel)** | https://kanban-project-khaki.vercel.app |
+| **Frontend (Vercel)** | https://frontend-kanban-board-one.vercel.app |
 | **Backend API** | https://backend-kanban-board-q2ft.onrender.com |
 | **API Docs** | https://backend-kanban-board-q2ft.onrender.com/docs |
 | **Health Check** | https://backend-kanban-board-q2ft.onrender.com/health |
@@ -79,7 +79,7 @@ const API_BASE_URL = 'https://backend-kanban-board-q2ft.onrender.com'
 
 ## 🚀 How to Use
 
-1. **Access the app**: https://kanban-project-khaki.vercel.app
+1. **Access the app**: https://frontend-kanban-board-one.vercel.app
 2. **Create tasks**: Click "Add Task" button
 3. **Move tasks**: Drag and drop between columns
 4. **Delete tasks**: Click X button on tasks in "Done" column
