@@ -112,8 +112,11 @@
         board["Planning"] = [...board["Planning"], newTaskData];
         board = { ...board };
         
-        const maxId = Math.max(...Object.values(board).flat().map(t => t.id));
-        taskId = maxId + 1;
+        const allTasks = Object.values(board).flat();
+        if (allTasks.length > 0) {
+          const maxId = Math.max(...allTasks.map(t => t.id));
+          taskId = maxId + 1;
+        }
         
         saveToLocalStorage();
         
