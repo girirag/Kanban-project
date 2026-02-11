@@ -74,7 +74,8 @@
         });
         
         if (tasks.length > 0) {
-          taskId = Math.max(...tasks.map(t => t.id)) + 1;
+          const maxId = Math.max(...tasks.map(t => t.id));
+          taskId = maxId + 1;
         }
         
         board = { ...board };
